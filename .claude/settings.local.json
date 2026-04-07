@@ -4,7 +4,12 @@
       "Bash(./aftman.exe install:*)",
       "Bash(rojo --version)",
       "Bash(\"$USERPROFILE/.aftman/bin/rojo.exe\" --version)",
-      "Bash(start cmd:*)"
+      "Bash(start cmd:*)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /PID 3520 /F)",
+      "Bash(cmd //c \"taskkill /PID 3520 /F\")",
+      "Bash(cmd //c \"netstat -ano | findstr :34872\")",
+      "Bash(cmd //c \"tasklist | findstr rojo\")"
     ]
   }
 }
