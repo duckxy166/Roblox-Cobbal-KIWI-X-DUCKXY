@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./aftman.exe install:*)",
+      "Bash(rojo --version)",
+      "Bash(\"$USERPROFILE/.aftman/bin/rojo.exe\" --version)",
+      "Bash(start cmd:*)"
+    ]
+  }
+}
