@@ -118,11 +118,10 @@ local function showFloatingText(position, text, color)
     Debris:AddItem(part, 1.2)
 end
 
-local function spawnHitEffect()
-    local dummy = getDummy()
-    if not dummy then return end
+local function spawnHitEffect(target)
+    if not target then return end
 
-    local torso = dummy:FindFirstChild("Torso") or dummy:FindFirstChild("UpperTorso")
+    local torso = target:FindFirstChild("Torso") or target:FindFirstChild("UpperTorso")
     if not torso then return end
 
     local effect = hitEffectTemplate:Clone()
@@ -214,15 +213,14 @@ local function runCombo()
     comboIndex  = 0
 end
 
--- เล่นเสียง + effect + damage text เฉพาะตอนโดน Dummy จริงเท่านั้น
-HitConfirmed.OnClientEvent:Connect(function(punchIndex, damage, isCrit)
+-- เล่นเสียง + effect + damage text
+HitConfirmed.OnClientEvent:Connect(function(punchIndex, damage, isCrit, target)
     local sound = sounds[punchIndex]
     if sound then sound:Play() end
-    spawnHitEffect()
+    spawnHitEffect(target)
 
-    local dummy = getDummy()
-    if dummy then
-        local torso = dummy:FindFirstChild("Torso") or dummy:FindFirstChild("UpperTorso")
+    if target then
+        local torso = target:FindFirstChild("Torso") or target:FindFirstChild("UpperTorso")
         if torso then
             if isCrit then
                 showFloatingText(torso.Position, "CRIT! -" .. damage, Color3.fromRGB(255, 170, 0))

@@ -170,6 +170,87 @@ local function playHitAnim(dummy, punchIndex)
     track:Play()
 end
 
+local function getNearestShopNPC(origin)
+    local nearestNPC
+    local nearestRoot
+    local nearestDistance
+
+    for _, candidate in Workspace:GetChildren() do
+        if candidate:IsA("Model") and candidate.Name == "ShopNPC" then
+            local humanoid = candidate:FindFirstChildOfClass("Humanoid")
+            local root = candidate:FindFirstChild("HumanoidRootPart")
+            if humanoid and humanoid.Health > 0 and root then
+                local distance = (origin - root.Position).Magnitude
+                if distance <= CONFIG.ATTACK_RANGE and (not nearestDistance or distance < nearestDistance) then
+                    nearestNPC = candidate
+                    nearestRoot = root
+                    nearestDistance = distance
+                end
+            end
+        end
+    end
+
+    return nearestNPC, nearestRoot, nearestDistance
+end
+
+local function getNearestEnemy(origin)
+    local nearestEnemy
+    local nearestRoot
+    local nearestDistance
+
+    local enemiesFolder = Workspace:FindFirstChild("Enemies")
+    if enemiesFolder then
+        for _, candidate in enemiesFolder:GetChildren() do
+            if candidate:IsA("Model") then
+                local humanoid = candidate:FindFirstChildOfClass("Humanoid")
+                local root = candidate:FindFirstChild("HumanoidRootPart")
+                if humanoid and humanoid.Health > 0 and root then
+                    local distance = (origin - root.Position).Magnitude
+                    if distance <= CONFIG.ATTACK_RANGE and (not nearestDistance or distance < nearestDistance) then
+                        nearestEnemy = candidate
+                        nearestRoot = root
+                        nearestDistance = distance
+                    end
+                end
+            end
+        end
+    end
+
+    return nearestEnemy, nearestRoot, nearestDistance
+end
+
+local function retaliateShopNPC(player, npc, playerRoot)
+    local character = player.Character
+    if not character then return end
+
+    local playerHumanoid = character:FindFirstChildOfClass("Humanoid")
+    if not playerHumanoid or playerHumanoid.Health <= 0 then return end
+
+    playerRoot.AssemblyLinearVelocity = Vector3.new(0, 1000, 0)
+
+    task.delay(0.5, function()
+        if not playerHumanoid.Parent or playerHumanoid.Health <= 0 then return end
+
+        local creatorTag = playerHumanoid:FindFirstChild("creator")
+        if creatorTag then
+            creatorTag:Destroy()
+        end
+
+        creatorTag = Instance.new("ObjectValue")
+        creatorTag.Name = "creator"
+        creatorTag.Value = npc
+        creatorTag.Parent = playerHumanoid
+
+        task.delay(2, function()
+            if creatorTag.Parent then
+                creatorTag:Destroy()
+            end
+        end)
+
+        playerHumanoid.Health = 0
+    end)
+end
+
 -- ============================================================
 --  Players
 -- ============================================================
@@ -206,24 +287,76 @@ end)
 -- ============================================================
 --  Attack Handler
 -- ============================================================
-AttackDummy.OnServerEvent:Connect(function(player, punchIndex)
-    local dummy = playerDummies[player]
-    if not dummy or dummyDead[dummy] then
-        print("[DummyServer] Attack blocked: dummy=", dummy, "| dead=", dummy and dummyDead[dummy])
-        return
-    end
-
+AttackDummy.OnServerEvent:Connect(function(player, punchIndex, isRSkill)
     local character  = player.Character
     if not character then return end
     local playerRoot = character:FindFirstChild("HumanoidRootPart")
-    local dummyRoot  = dummy:FindFirstChild("HumanoidRootPart")
-    if not playerRoot or not dummyRoot then return end
-    if (playerRoot.Position - dummyRoot.Position).Magnitude > CONFIG.ATTACK_RANGE then return end
+    if not playerRoot then return end
+
+    local dummy = playerDummies[player]
+    local dummyRoot = dummy and dummy:FindFirstChild("HumanoidRootPart")
+    local dummyDistance
+    if dummy and not dummyDead[dummy] and dummyRoot then
+        dummyDistance = (playerRoot.Position - dummyRoot.Position).Magnitude
+        if dummyDistance > CONFIG.ATTACK_RANGE then
+            dummyDistance = nil
+        end
+    end
+
+    local shopNPC, _, shopDistance = getNearestShopNPC(playerRoot.Position)
+    local enemy, _, enemyDistance = getNearestEnemy(playerRoot.Position)
+
+    local target = nil
+    local targetType = nil
+    local minDistance = math.huge
+
+    if dummyDistance then
+        target = dummy
+        targetType = "Dummy"
+        minDistance = dummyDistance
+    end
+
+    if shopDistance and shopDistance < minDistance then
+        target = shopNPC
+        targetType = "ShopNPC"
+        minDistance = shopDistance
+    end
+
+    if enemyDistance and enemyDistance < minDistance then
+        target = enemy
+        targetType = "Enemy"
+        minDistance = enemyDistance
+    end
+
+    if not target then
+        return
+    end
+
+    if targetType == "ShopNPC" then
+        retaliateShopNPC(player, target, playerRoot)
+        return
+    elseif targetType == "Enemy" then
+        local humanoid = target:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then return end
+        
+        local damage, isCrit = PlayerStats.rollDamage(player)
+        local prevHP = humanoid.Health
+        humanoid:TakeDamage(damage)
+        local actualDmg = math.min(prevHP, damage)
+        HitConfirmed:FireClient(player, punchIndex, actualDmg, isCrit, target)
+
+        if prevHP > 0 and humanoid.Health <= 0 then
+            playerCoins[player] = (playerCoins[player] or 0) + (CONFIG.COINS_PER_KILL * 5)
+            UpdateCoins:FireClient(player, playerCoins[player], CONFIG.COINS_PER_KILL * 5)
+        end
+        return
+    end
 
     local humanoid = dummy:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
 
     local damage, isCrit = PlayerStats.rollDamage(player)
+    if isRSkill then damage = math.floor(damage * 3) end
     local prevHP = humanoid.Health
     humanoid:TakeDamage(damage)
     local newHP  = humanoid.Health
@@ -234,26 +367,36 @@ AttackDummy.OnServerEvent:Connect(function(player, punchIndex)
 
     -- แจ้ง client (เสียง + damage text + crit flag)
     local actualDmg = math.min(prevHP, damage)
-    HitConfirmed:FireClient(player, punchIndex, actualDmg, isCrit)
+    HitConfirmed:FireClient(player, punchIndex, actualDmg, isCrit, dummy)
 
     if prevHP > 0 and newHP <= 0 then
         dummyDead[dummy] = true
+        playerDummies[player] = nil
 
         playerCoins[player] = (playerCoins[player] or 0) + CONFIG.COINS_PER_KILL
         UpdateCoins:FireClient(player, playerCoins[player], CONFIG.COINS_PER_KILL)
 
-        task.spawn(function()
-            task.wait(2)
-            if dummy and dummy.Parent then
-                dummyMaxHP[dummy] = nil
-                dummy:Destroy()
-            end
-            playerDummies[player] = nil
+        task.delay(2, function()
+            if not dummy or not dummy.Parent then return end
 
-            task.wait(1)
-            if not Players:FindFirstChild(player.Name) then return end
+            dummyMaxHP[dummy] = nil
+            dummy:Destroy()
+        end)
+
+        task.delay(2 + CONFIG.DUMMY_RESPAWN, function()
+            if not player.Parent then
+                print("[DummyServer] Player left, skip respawn")
+                return
+            end
+
             local plot = PlotManager.getPlot(player)
-            if plot then spawnDummy(player, plot) end
+            if not plot then
+                warn("[DummyServer] No plot found for respawn")
+                return
+            end
+
+            print("[DummyServer] Respawning dummy for", player.Name)
+            spawnDummy(player, plot)
         end)
     end
 end)

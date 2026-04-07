@@ -36,7 +36,7 @@ local function teleportToPlot(character, plot)
     print("[PlotServer]", character.Name, "teleported to", plot.Name, "at", targetCFrame.Position)
 end
 
-local function onCharacterAdded(character, plot)
+local function onCharacterAdded(character, player, plot)
     task.spawn(function()
         -- รอ character โหลดเสร็จ
         character:WaitForChild("HumanoidRootPart", 10)
@@ -47,33 +47,24 @@ local function onCharacterAdded(character, plot)
     end)
 end
 
--- รอให้ PlotManager โหลด plots ก่อน แล้วค่อย assign
-task.wait(1)
-
-Players.PlayerAdded:Connect(function(player)
+local function setupPlayer(player)
     local plot = PlotManager.assign(player)
     if not plot then return end
 
     player.CharacterAdded:Connect(function(character)
-        onCharacterAdded(character, plot)
+        onCharacterAdded(character, player, plot)
     end)
 
     if player.Character then
-        onCharacterAdded(player.Character, plot)
+        onCharacterAdded(player.Character, player, plot)
     end
-end)
+end
 
--- จัดการผู้เล่นที่อยู่ในเกมก่อน script รัน
+Players.PlayerAdded:Connect(setupPlayer)
+
+-- Handle players already in-game when this script starts
 for _, player in Players:GetPlayers() do
-    local plot = PlotManager.assign(player)
-    if plot then
-        player.CharacterAdded:Connect(function(character)
-            onCharacterAdded(character, plot)
-        end)
-        if player.Character then
-            onCharacterAdded(player.Character, plot)
-        end
-    end
+    setupPlayer(player)
 end
 
 Players.PlayerRemoving:Connect(function(player)
