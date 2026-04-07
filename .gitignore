@@ -1,0 +1,10 @@
+# Roblox binary files
+*.rbxl
+*.rbxlx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Aftman binaries
+.bin/
